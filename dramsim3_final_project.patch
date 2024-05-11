@@ -1,0 +1,68 @@
+diff --git a/configs/DDR4_8Gb_x8_2400.ini b/configs/DDR4_8Gb_x8_2400.ini
+index 69953d7..af0c216 100644
+--- a/configs/DDR4_8Gb_x8_2400.ini
++++ b/configs/DDR4_8Gb_x8_2400.ini
+@@ -99,9 +99,22 @@ para_proba = 0.001
+ para_enabled = false
+ 
+ # Threshold so that it is just below HC_first
+-trr_threshold = 8000
++trr_threshold = 1000
+ trr_enabled = false
+ 
++
++#discrete_para stats: 
++dp_proba = 0.001
++dp_threshold = 1000
++dp_enabled = false
++
++#TWiCe
++twice_threshold = 1000
++twice_activity_threshold = 100
++twice_enable = true
++
++
++
+ [other]
+ epoch_period = 1204819
+ output_level = 1
+diff --git a/src/configuration.cc b/src/configuration.cc
+index 9e434f8..1b4894b 100644
+--- a/src/configuration.cc
++++ b/src/configuration.cc
+@@ -217,6 +217,13 @@ void Config::InitRowhammerParams() {
+     para_enabled = reader.GetBoolean("rowhammer", "para_enabled", false);
+     trr_threshold = reader.GetInteger("rowhammer", "trr_threshold", 200);
+     trr_enabled = reader.GetBoolean("rowhammer", "trr_enabled", false);
++    dp_proba = reader.GetReal("rowhammer", "dp_proba", 0.05);
++    dp_threshold = reader.GetInteger("rowhammer", "dp_threshold", 200);
++    dp_enabled = reader.GetBoolean("rowhammer", "dp_enabled", false);
++    twice_threshold = reader.GetInteger("rowhammer", "dp_threshold", 200);
++    twice_activity_threshold = reader.GetInteger("rowhammer", "dp_threshold", 50);
++    twice_enabled = reader.GetBoolean("rowhammer", "dp_enabled", false);
++
+     return;
+ }
+ 
+diff --git a/src/configuration.h b/src/configuration.h
+index 657b3e9..c012e2c 100644
+--- a/src/configuration.h
++++ b/src/configuration.h
+@@ -118,9 +118,16 @@ class Config {
+     double proba_4_bit_flipped;
+     uint64_t flip_mask;
+     bool para_enabled;
+-    double para_proba;
++    bool dp_enabled;
++    bool twice_enabled;
+     bool trr_enabled;
++    double para_proba;
+     int trr_threshold;
++    double dp_proba;
++    int dp_threshold;
++    int twice_threshold;
++    int twice_activity_threshold;
++
+ 
+     // pre calculated power parameters
+     double act_energy_inc;

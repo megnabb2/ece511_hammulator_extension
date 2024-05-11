@@ -1,0 +1,125 @@
+diff --git a/src/mem/dramsim3.cc b/src/mem/dramsim3.cc
+index ae9904478c..d5c5ceeba3 100644
+--- a/src/mem/dramsim3.cc
++++ b/src/mem/dramsim3.cc
+@@ -336,6 +336,7 @@ void DRAMsim3::PARA(int channel, int rank, int bankgroup, int bank, int row) {
+     }
+ }
+ 
++
+ void DRAMsim3::TRR(int channel, int rank, int bankgroup, int bank, int row) {
+     for (int dist=-5; dist<=5; dist++) {
+         if (dist == 0 || row+dist < 0 || row+dist>=config->rows) {
+@@ -354,6 +355,80 @@ void DRAMsim3::TRR(int channel, int rank, int bankgroup, int bank, int row) {
+     }
+ }
+ 
++
++void DRAMsim3::Discrete_PARA(int channel, int rank, int bankgroup, int bank, int row) {
++
++    for (int dist=-1; dist<=1; dist++) { //check adj rows
++        if (dist == 0 || row+dist < 0 || row+dist>=config->rows) {
++            continue;
++        }
++
++        double rand = std::generate_canonical<double, 10>(para_rng);
++        uint64_t target = config->ReverseAddressMapping(channel, rank, bankgroup, bank, row+dist, 0);
++        
++        if (access_count.find(target) == access_count.end()) { //check if row in map
++            access_count[target] = 1;
++        } else {
++            access_count[target]++;
++        }
++
++        if (access_count[target] > config->dp_threshold) {
++            if (rand <= config->dp_proba) {
++                hammer_count.erase(target);  // Refresh row
++                last_refresh[target] = curTick();  // Update last_refreshed time
++                access_count[target] = 0; 
++            }
++        }
++        if (curTick() % 10000 == 0) {  // refresh after certain amt of time 
++            for (auto it = last_refresh.begin(); it != last_refresh.end(); ) {
++                if (curTick() - it->second > 5000) {  // Check for old entries
++                    it = last_refresh.erase(it);
++                } else {
++                    ++it;
++                }
++            }
++        }
++    }
++
++};
++
++void DRAMsim3::TWiCe(int channel, int rank, int bankgroup, int bank, int row) {
++    uint64_t address = config->ReverseAddressMapping(channel, rank, bankgroup, bank, row, 0);
++
++    if(twice_count.find(address) == twice_count.end()) { // check if new or counter already exists
++        twice_count[address] = 1;  
++    } else {
++        twice_count[address]++;
++    }
++
++    // Check if the activation count exceeds the TWiCe threshold
++    if (twice_count[address] >= config->twice_threshold) { //if exceeds twice threshold refresh row and adjacent rows. 
++        for (int dist = -2; dist <= 2; dist++) {
++            if (dist == 0 || row + dist < 0 || row + dist >= config->rows) {
++                continue;  
++            }
++            uint64_t target = config->ReverseAddressMapping(channel, rank, bankgroup, bank, row + dist, 0);
++            hammer_count.erase(target); 
++        }
++        twice_count[address] = 0;
++    }
++
++    // Periodically remove unnecessary counters
++    if (curTick() % 10000 == 0) {  // refresh after certain amt of time 
++        for (auto it = twice_count.begin(); it != twice_count.end();) {
++            if (it->second < config->twice_activity_threshold) {
++                it = twice_count.erase(it);  // Remove counter if below activity threshold
++            } else {
++                ++it;
++            }
++        }
++    }
++}
++
++
++
++
++
+ void DRAMsim3::readComplete(unsigned id, uint64_t addr, bool bufferhit)
+ {
+     DPRINTF(DRAMsim3, "Read to address %lld complete\n", addr);
+@@ -495,6 +570,12 @@ void DRAMsim3::readComplete(unsigned id, uint64_t addr, bool bufferhit)
+     if (config->trr_enabled) {
+         TRR(channel, rank, bankgroup, bank, row);
+     }
++    if (config->dp_enabled) {
++        Discrete_PARA(channel, rank, bankgroup, bank, row);
++    }
++    if (config->twice_enabled) {
++        TWiCe(channel, rank, bankgroup, bank, row);
++    }
+ }
+ 
+ void DRAMsim3::writeComplete(unsigned id, uint64_t addr, bool bufferhit)
+diff --git a/src/mem/dramsim3.hh b/src/mem/dramsim3.hh
+index 709c09d7ad..11be8e4d6b 100644
+--- a/src/mem/dramsim3.hh
++++ b/src/mem/dramsim3.hh
+@@ -222,6 +222,14 @@ class DRAMsim3 : public AbstractMemory
+     std::unordered_map<uint64_t,int> trr_count;
+     void TRR(int channel, int rank, int bankgroup, int bank, int row);
+ 
++    std::unordered_map<uint64_t,int> access_count;
++    std::unordered_map<uint64_t, int> last_refresh;
++
++    void Discrete_PARA(int channel, int rank, int bankgroup, int bank, int row);
++
++    std::unordered_map<uint64_t,int> twice_count;
++    void TWiCe(int channel, int rank, int bankgroup, int bank, int row);
++
+     double gen_proba(uint64_t addr);
+ 
+     DrainState drain() override;
